@@ -1,0 +1,51 @@
+# Environment files
+.env
+.env.local
+.env.production
+.env.development
+
+# Backend specific
+realm-backend/.env
+realm-backend/.env.local
+realm-backend/.env.production
+
+# Frontend specific  
+realm-frontend/.env
+realm-frontend/.env.local
+realm-frontend/.env.production
+
+# Authentication system specific
+realm-authentication-system/.env
+realm-authentication-system/.env.local
+realm-authentication-system/.env.production
+
+# Logs
+*.log
+logs/
+
+# Dependencies
+node_modules/
+vendor/
+
+# Build outputs
+dist/
+build/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test coverage
+coverage/
+*.cover
+*.out
