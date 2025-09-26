@@ -1,138 +1,112 @@
 import React, { useEffect, useRef } from 'react';
-import { MessageComponent } from './MessageComponent';
+import { MessageItem } from './MessageItem';
+import { TypingIndicator } from './TypingIndicator';
 
 interface Message {
   id: string;
   content: string;
-  user: {
+  author: {
     id: string;
     username: string;
-    display_name?: string;
     avatar?: string;
   };
-  created_at: string;
-  edited: boolean;
-  reply_to?: string;
-  thread_id?: string;
+  timestamp: Date;
+  edited?: boolean;
+  reactions?: Array<{
+    emoji: string;
+    count: number;
+    users: string[];
+  }>;
+  replyTo?: {
+    id: string;
+    author: string;
+    content: string;
+  };
 }
 
 interface MessageListProps {
-  messages: Message[];
   channelId: string;
-  onMessagesUpdate: (messages: Message[]) => void;
 }
 
-export const MessageList: React.FC<MessageListProps> = ({ messages, channelId, onMessagesUpdate }) => {
+export const MessageList: React.FC<MessageListProps> = ({ channelId }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  
+  // Mock messages data
+  const messages: Message[] = [
+    {
+      id: '1',
+      content: 'Welcome to the general channel! 👋',
+      author: { id: '1', username: 'admin', avatar: undefined },
+      timestamp: new Date(Date.now() - 3600000),
+      reactions: [
+        { emoji: '👋', count: 3, users: ['2', '3', '4'] },
+        { emoji: '🎉', count: 1, users: ['2'] }
+      ]
+    },
+    {
+      id: '2',
+      content: 'Thanks for the welcome! This looks great.',
+      author: { id: '2', username: 'user1' },
+      timestamp: new Date(Date.now() - 3000000),
+      replyTo: {
+        id: '1',
+        author: 'admin',
+        content: 'Welcome to the general channel! 👋'
+      }
+    },
+    {
+      id: '3',
+      content: 'I agree! The interface is really clean and Discord-like.',
+      author: { id: '3', username: 'user2' },
+      timestamp: new Date(Date.now() - 1800000),
+      edited: true
+    },
+    {
+      id: '4',
+      content: 'Has anyone tried the voice channels yet?',
+      author: { id: '4', username: 'user3' },
+      timestamp: new Date(Date.now() - 600000)
+    }
+  ];
+
+  const typingUsers = ['user4', 'user5'];
 
   useEffect(() => {
-    scrollToBottom();
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
-
-  const handleReaction = async (messageId: string, emoji: string) => {
-    try {
-      const response = await fetch(`/api/v1/protected/messages/${messageId}/reactions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify({ emoji })
-      });
-      
-      if (response.ok) {
-        // Reload messages to show updated reactions
-        const messagesResponse = await fetch(`/api/v1/protected/channels/${channelId}/messages`, {
-          headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-        });
-        if (messagesResponse.ok) {
-          const updatedMessages = await messagesResponse.json();
-          onMessagesUpdate(updatedMessages);
-        }
-      }
-    } catch (error) {
-      console.error('Failed to add reaction:', error);
-    }
-  };
-
-  const handleEdit = async (messageId: string, newContent: string) => {
-    try {
-      const response = await fetch(`/api/v1/protected/messages/${messageId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify({ content: newContent })
-      });
-      
-      if (response.ok) {
-        // Reload messages to show updated content
-        const messagesResponse = await fetch(`/api/v1/protected/channels/${channelId}/messages`, {
-          headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-        });
-        if (messagesResponse.ok) {
-          const updatedMessages = await messagesResponse.json();
-          onMessagesUpdate(updatedMessages);
-        }
-      }
-    } catch (error) {
-      console.error('Failed to edit message:', error);
-    }
-  };
-
-  const handleDelete = async (messageId: string) => {
-    try {
-      const response = await fetch(`/api/v1/protected/messages/${messageId}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-      });
-      
-      if (response.ok) {
-        // Remove message from local state
-        const updatedMessages = messages.filter(m => m.id !== messageId);
-        onMessagesUpdate(updatedMessages);
-      }
-    } catch (error) {
-      console.error('Failed to delete message:', error);
-    }
-  };
-
-  if (messages.length === 0) {
-    return (
-      <div className="flex-1 flex items-center justify-center">
-        <div className="text-center">
-          <div className="text-6xl mb-4">💬</div>
-          <h3 className="text-xl font-semibold text-white mb-2">No messages yet</h3>
-          <p className="text-gray-400">Be the first to send a message!</p>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-2">
+    <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+      {/* Welcome Message */}
+      <div className="text-center py-8">
+        <div className="w-16 h-16 bg-gray-600 rounded-full mx-auto mb-4 flex items-center justify-center text-2xl">
+          #
+        </div>
+        <h2 className="text-2xl font-bold text-white mb-2">Welcome to #general!</h2>
+        <p className="text-gray-400">This is the start of the #general channel.</p>
+      </div>
+
+      {/* Messages */}
       {messages.map((message, index) => {
-        const prevMessage = index > 0 ? messages[index - 1] : null;
-        const showHeader = !prevMessage || 
-          prevMessage.user.id !== message.user.id ||
-          new Date(message.created_at).getTime() - new Date(prevMessage.created_at).getTime() > 300000; // 5 minutes
+        const prevMessage = messages[index - 1];
+        const showAvatar = !prevMessage || 
+          prevMessage.author.id !== message.author.id ||
+          (message.timestamp.getTime() - prevMessage.timestamp.getTime()) > 300000; // 5 minutes
 
         return (
-          <MessageComponent
+          <MessageItem
             key={message.id}
             message={message}
-            showHeader={showHeader}
-            onReaction={handleReaction}
-            onEdit={handleEdit}
-            onDelete={handleDelete}
+            showAvatar={showAvatar}
           />
         );
       })}
+
+      {/* Typing Indicator */}
+      {typingUsers.length > 0 && (
+        <TypingIndicator users={typingUsers} />
+      )}
+
       <div ref={messagesEndRef} />
     </div>
   );

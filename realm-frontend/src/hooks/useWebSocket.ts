@@ -1,132 +1,262 @@
-import { useEffect, useRef, useState } from 'react';
-import { useAuth } from '../context/AuthContext';
+import { useEffect, useRef, useState, useCallback } from 'react';
 
 interface WSMessage {
   type: string;
   data: any;
   realm_id?: string;
   channel_id?: string;
-  user_id?: string;
+  user_id: string;
+  timestamp: string;
 }
 
-export const useWebSocket = () => {
-  const { token } = useAuth();
-  const [socket, setSocket] = useState<WebSocket | null>(null);
-  const [connected, setConnected] = useState(false);
-  const [messages, setMessages] = useState<WSMessage[]>([]);
+interface UseWebSocketOptions {
+  url: string;
+  onMessage?: (message: WSMessage) => void;
+  onConnect?: () => void;
+  onDisconnect?: () => void;
+  reconnectInterval?: number;
+}
+
+export const useWebSocket = (options: UseWebSocketOptions) => {
+  const [isConnected, setIsConnected] = useState(false);
+  const [reconnectAttempts, setReconnectAttempts] = useState(0);
+  const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout>();
-  const reconnectAttempts = useRef(0);
-  const maxReconnectAttempts = 5;
+  const subscribedChannels = useRef<Set<string>>(new Set());
+  const subscribedRealms = useRef<Set<string>>(new Set());
 
-  const connect = () => {
-    if (!token) return;
+  const connect = useCallback(() => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) return;
 
-    const wsUrl = `ws://localhost:8080/ws?token=${token}`;
-    const ws = new WebSocket(wsUrl);
+    wsRef.current = new WebSocket(options.url);
 
-    ws.onopen = () => {
-      console.log('WebSocket connected');
-      setConnected(true);
-      reconnectAttempts.current = 0;
+    wsRef.current.onopen = () => {
+      setIsConnected(true);
+      setReconnectAttempts(0);
+      options.onConnect?.();
+      
+      // Resubscribe to channels and realms
+      subscribedChannels.current.forEach(channelId => {
+        joinChannel(channelId);
+      });
+      subscribedRealms.current.forEach(realmId => {
+        joinRealm(realmId);
+      });
     };
 
-    ws.onmessage = (event) => {
+    wsRef.current.onmessage = (event) => {
       try {
         const message: WSMessage = JSON.parse(event.data);
-        setMessages(prev => [...prev, message]);
+        options.onMessage?.(message);
       } catch (error) {
-        console.error('Error parsing WebSocket message:', error);
+        console.error('Failed to parse WebSocket message:', error);
       }
     };
 
-    ws.onclose = (event) => {
-      console.log('WebSocket disconnected:', event.code, event.reason);
-      setConnected(false);
+    wsRef.current.onclose = () => {
+      setIsConnected(false);
+      options.onDisconnect?.();
       
-      // Attempt to reconnect
-      if (reconnectAttempts.current < maxReconnectAttempts) {
-        const timeout = Math.pow(2, reconnectAttempts.current) * 1000; // Exponential backoff
+      // Attempt reconnection with exponential backoff
+      if (reconnectAttempts < 5) {
+        const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
         reconnectTimeoutRef.current = setTimeout(() => {
-          reconnectAttempts.current++;
+          setReconnectAttempts(prev => prev + 1);
           connect();
-        }, timeout);
+        }, delay);
       }
     };
 
-    ws.onerror = (error) => {
+    wsRef.current.onerror = (error) => {
       console.error('WebSocket error:', error);
     };
+  }, [options, reconnectAttempts]);
 
-    setSocket(ws);
-  };
-
-  const disconnect = () => {
+  const disconnect = useCallback(() => {
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
     }
-    if (socket) {
-      socket.close();
-      setSocket(null);
-    }
-    setConnected(false);
-  };
+    wsRef.current?.close();
+    setIsConnected(false);
+  }, []);
 
-  const sendMessage = (message: WSMessage) => {
-    if (socket && connected) {
-      socket.send(JSON.stringify(message));
+  const sendMessage = useCallback((message: Partial<WSMessage>) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        ...message,
+        timestamp: new Date().toISOString()
+      }));
     }
-  };
+  }, []);
 
-  const joinRealm = (realmId: string) => {
+  // Channel management
+  const joinChannel = useCallback((channelId: string) => {
+    subscribedChannels.current.add(channelId);
     sendMessage({
-      type: 'join_realm',
-      data: {},
+      type: 'JOIN_CHANNEL',
+      channel_id: channelId
+    });
+  }, [sendMessage]);
+
+  const leaveChannel = useCallback((channelId: string) => {
+    subscribedChannels.current.delete(channelId);
+    sendMessage({
+      type: 'LEAVE_CHANNEL',
+      channel_id: channelId
+    });
+  }, [sendMessage]);
+
+  // Realm management
+  const joinRealm = useCallback((realmId: string) => {
+    subscribedRealms.current.add(realmId);
+    sendMessage({
+      type: 'JOIN_REALM',
       realm_id: realmId
     });
-  };
+  }, [sendMessage]);
 
-  const joinChannel = (channelId: string) => {
+  const leaveRealm = useCallback((realmId: string) => {
+    subscribedRealms.current.delete(realmId);
     sendMessage({
-      type: 'join_channel',
-      data: {},
+      type: 'LEAVE_REALM',
+      realm_id: realmId
+    });
+  }, [sendMessage]);
+
+  // Typing indicators
+  const startTyping = useCallback((channelId: string) => {
+    sendMessage({
+      type: 'TYPING_START',
       channel_id: channelId
     });
-  };
+  }, [sendMessage]);
 
-  const startTyping = (channelId: string) => {
+  const stopTyping = useCallback((channelId: string) => {
     sendMessage({
-      type: 'typing_start',
-      data: {},
+      type: 'TYPING_STOP',
       channel_id: channelId
     });
-  };
+  }, [sendMessage]);
 
-  const stopTyping = (channelId: string) => {
+  // Message operations
+  const sendChatMessage = useCallback((channelId: string, content: string, replyTo?: string) => {
     sendMessage({
-      type: 'typing_stop',
-      data: {},
-      channel_id: channelId
+      type: 'MESSAGE_CREATE',
+      channel_id: channelId,
+      data: {
+        content,
+        reply_to: replyTo
+      }
     });
-  };
+  }, [sendMessage]);
+
+  const editMessage = useCallback((messageId: string, content: string) => {
+    sendMessage({
+      type: 'MESSAGE_UPDATE',
+      data: {
+        message_id: messageId,
+        content
+      }
+    });
+  }, [sendMessage]);
+
+  const deleteMessage = useCallback((messageId: string) => {
+    sendMessage({
+      type: 'MESSAGE_DELETE',
+      data: {
+        message_id: messageId
+      }
+    });
+  }, [sendMessage]);
+
+  const addReaction = useCallback((messageId: string, emoji: string) => {
+    sendMessage({
+      type: 'MESSAGE_REACTION_ADD',
+      data: {
+        message_id: messageId,
+        emoji
+      }
+    });
+  }, [sendMessage]);
+
+  const removeReaction = useCallback((messageId: string, emoji: string) => {
+    sendMessage({
+      type: 'MESSAGE_REACTION_REMOVE',
+      data: {
+        message_id: messageId,
+        emoji
+      }
+    });
+  }, [sendMessage]);
+
+  // Voice operations
+  const joinVoiceChannel = useCallback((channelId: string) => {
+    sendMessage({
+      type: 'VOICE_STATE_UPDATE',
+      channel_id: channelId,
+      data: {
+        action: 'join'
+      }
+    });
+  }, [sendMessage]);
+
+  const leaveVoiceChannel = useCallback((channelId: string) => {
+    sendMessage({
+      type: 'VOICE_STATE_UPDATE',
+      channel_id: channelId,
+      data: {
+        action: 'leave'
+      }
+    });
+  }, [sendMessage]);
+
+  const updateVoiceState = useCallback((channelId: string, muted: boolean, deafened: boolean) => {
+    sendMessage({
+      type: 'VOICE_STATE_UPDATE',
+      channel_id: channelId,
+      data: {
+        self_muted: muted,
+        self_deafened: deafened
+      }
+    });
+  }, [sendMessage]);
+
+  // User presence
+  const updatePresence = useCallback((status: string, activity?: string) => {
+    sendMessage({
+      type: 'PRESENCE_UPDATE',
+      data: {
+        status,
+        activity
+      }
+    });
+  }, [sendMessage]);
 
   useEffect(() => {
-    if (token) {
-      connect();
-    }
-
+    connect();
     return () => {
       disconnect();
     };
-  }, [token]);
+  }, [connect, disconnect]);
 
   return {
-    connected,
-    messages,
+    isConnected,
+    reconnectAttempts,
     sendMessage,
-    joinRealm,
     joinChannel,
+    leaveChannel,
+    joinRealm,
+    leaveRealm,
     startTyping,
     stopTyping,
-    clearMessages: () => setMessages([])
+    sendChatMessage,
+    editMessage,
+    deleteMessage,
+    addReaction,
+    removeReaction,
+    joinVoiceChannel,
+    leaveVoiceChannel,
+    updateVoiceState,
+    updatePresence
   };
 };

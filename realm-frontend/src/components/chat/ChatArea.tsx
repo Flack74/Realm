@@ -1,50 +1,79 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Hash, Users, Pin, Search, Bell, HelpCircle, Smile, Paperclip, Send } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
 import { MessageList } from './MessageList';
 import { MessageInput } from './MessageInput';
+import { useAuth } from '../../context/AuthContext';
+
+interface Message {
+  id: string;
+  content: string;
+  author: {
+    id: string;
+    username: string;
+    display_name?: string;
+    avatar_url?: string;
+  };
+  created_at: string;
+  edited_at?: string;
+  reply_to?: {
+    id: string;
+    content: string;
+    author: { username: string; };
+  };
+  reactions?: Array<{
+    emoji_name: string;
+    count: number;
+    me: boolean;
+    users: Array<{ id: string; username: string; }>;
+  }>;
+}
 
 interface ChatAreaProps {
   channelId: string;
 }
 
 export const ChatArea: React.FC<ChatAreaProps> = ({ channelId }) => {
-  const [channel, setChannel] = useState<any>(null);
-  const [messages, setMessages] = useState<any[]>([]);
+  const { user } = useAuth();
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [replyTo, setReplyTo] = useState<Message['reply_to']>();
+  const [typingUsers, setTypingUsers] = useState<Array<{ id: string; username: string; }>>([]);
 
   useEffect(() => {
-    loadChannel();
-    loadMessages();
+    if (channelId) {
+      loadMessages();
+    }
   }, [channelId]);
 
-  const loadChannel = async () => {
-    try {
-      const response = await fetch(`/api/v1/protected/channels/${channelId}`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setChannel(data);
-      }
-    } catch (error) {
-      console.error('Failed to load channel:', error);
-    }
-  };
-
   const loadMessages = async () => {
+    setLoading(true);
     try {
       const response = await fetch(`/api/v1/protected/channels/${channelId}/messages`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
       });
+      
       if (response.ok) {
         const data = await response.json();
-        setMessages(data);
+        const transformedMessages = data.map((msg: any) => ({
+          ...msg,
+          author: {
+            id: msg.user_id || msg.author_id,
+            username: msg.username || msg.author?.username,
+            display_name: msg.display_name || msg.author?.display_name,
+            avatar_url: msg.avatar_url || msg.author?.avatar_url
+          }
+        }));
+        setMessages(transformedMessages);
       }
     } catch (error) {
       console.error('Failed to load messages:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleSendMessage = async (content: string) => {
+  const sendMessage = async (content: string, replyToId?: string) => {
     try {
       const response = await fetch(`/api/v1/protected/channels/${channelId}/messages`, {
         method: 'POST',
@@ -52,53 +81,119 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ channelId }) => {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
-        body: JSON.stringify({ content })
+        body: JSON.stringify({ 
+          content,
+          reply_to: replyToId
+        })
       });
+      
       if (response.ok) {
-        const newMessage = await response.json();
-        setMessages([...messages, newMessage]);
+        setReplyTo(undefined);
+        loadMessages();
       }
     } catch (error) {
       console.error('Failed to send message:', error);
     }
   };
 
+  const editMessage = async (messageId: string, content: string) => {
+    try {
+      const response = await fetch(`/api/v1/protected/messages/${messageId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({ content })
+      });
+      
+      if (response.ok) {
+        loadMessages();
+      }
+    } catch (error) {
+      console.error('Failed to edit message:', error);
+    }
+  };
+
+  const deleteMessage = async (messageId: string) => {
+    if (!confirm('Are you sure you want to delete this message?')) return;
+    
+    try {
+      const response = await fetch(`/api/v1/protected/messages/${messageId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      
+      if (response.ok) {
+        loadMessages();
+      }
+    } catch (error) {
+      console.error('Failed to delete message:', error);
+    }
+  };
+
+  const addReaction = async (messageId: string, emoji: string) => {
+    try {
+      await fetch(`/api/v1/protected/messages/${messageId}/reactions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({ emoji_name: emoji })
+      });
+      loadMessages();
+    } catch (error) {
+      console.error('Failed to add reaction:', error);
+    }
+  };
+
+  const removeReaction = async (messageId: string, emoji: string) => {
+    try {
+      await fetch(`/api/v1/protected/messages/${messageId}/reactions/${emoji}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      loadMessages();
+    } catch (error) {
+      console.error('Failed to remove reaction:', error);
+    }
+  };
+
+  const handleReplyToMessage = (message: Message) => {
+    setReplyTo({
+      id: message.id,
+      content: message.content,
+      author: { username: message.author.username }
+    });
+  };
+
+  if (!user) return null;
+
   return (
-    <div className="flex-1 flex flex-col">
-      {/* Channel Header */}
-      <div className="h-12 bg-gray-800 border-b border-gray-700 flex items-center justify-between px-4">
-        <div className="flex items-center">
-          <Hash className="w-5 h-5 text-gray-400 mr-2" />
-          <span className="font-semibold text-white">{channel?.name || 'Channel'}</span>
-          {channel?.topic && (
-            <>
-              <div className="w-px h-6 bg-gray-600 mx-3" />
-              <span className="text-sm text-gray-400">{channel.topic}</span>
-            </>
-          )}
-        </div>
-        
-        <div className="flex items-center space-x-4">
-          <Bell className="w-5 h-5 text-gray-400 hover:text-white cursor-pointer" />
-          <Pin className="w-5 h-5 text-gray-400 hover:text-white cursor-pointer" />
-          <Users className="w-5 h-5 text-gray-400 hover:text-white cursor-pointer" />
-          <div className="flex items-center bg-gray-900 rounded px-2 py-1">
-            <Search className="w-4 h-4 text-gray-400 mr-2" />
-            <input
-              type="text"
-              placeholder="Search"
-              className="bg-transparent text-sm text-white placeholder-gray-400 focus:outline-none w-32"
-            />
-          </div>
-          <HelpCircle className="w-5 h-5 text-gray-400 hover:text-white cursor-pointer" />
-        </div>
-      </div>
-
-      {/* Messages Area */}
-      <MessageList messages={messages} channelId={channelId} onMessagesUpdate={setMessages} />
-
-      {/* Message Input */}
-      <MessageInput onSendMessage={handleSendMessage} channelName={channel?.name} />
+    <div className="flex flex-col h-full">
+      <MessageList
+        messages={messages}
+        currentUserId={user.id}
+        onEditMessage={editMessage}
+        onDeleteMessage={deleteMessage}
+        onReplyToMessage={handleReplyToMessage}
+        onAddReaction={addReaction}
+        onRemoveReaction={removeReaction}
+        loading={loading}
+        typingUsers={typingUsers}
+      />
+      
+      <MessageInput
+        channelId={channelId}
+        replyTo={replyTo}
+        onSendMessage={sendMessage}
+        onClearReply={() => setReplyTo(undefined)}
+      />
     </div>
   );
 };

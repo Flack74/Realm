@@ -1,81 +1,157 @@
-import React from 'react';
-import { Volume2, Users, Monitor, MonitorSpeaker } from 'lucide-react';
-import { useVoiceChat } from '../../hooks/useVoiceChat';
+import React, { useState, useEffect } from 'react';
+import { Mic, MicOff, Headphones, HeadphonesOff, PhoneOff, Settings } from 'lucide-react';
+import { Avatar } from '../ui/Avatar';
+import { Button } from '../ui/Button';
 
-interface VoiceChannelProps {
-  channel: {
-    id: string;
-    name: string;
-    user_limit: number;
-  };
+interface VoiceParticipant {
+  id: string;
+  username: string;
+  avatar?: string;
+  isMuted: boolean;
+  isDeafened: boolean;
+  isSpeaking: boolean;
 }
 
-export const VoiceChannel: React.FC<VoiceChannelProps> = ({ channel }) => {
-  const { voiceState, joinVoiceChannel, leaveVoiceChannel } = useVoiceChat();
+interface VoiceChannelProps {
+  channelId: string;
+  channelName: string;
+  onLeave: () => void;
+}
 
-  const isConnected = voiceState.connected && voiceState.channelId === channel.id;
-  const userCount = voiceState.users.length;
-
-  const handleClick = () => {
-    if (isConnected) {
-      leaveVoiceChannel();
-    } else {
-      joinVoiceChannel(channel.id);
+export const VoiceChannel: React.FC<VoiceChannelProps> = ({
+  channelId,
+  channelName,
+  onLeave
+}) => {
+  const [isMuted, setIsMuted] = useState(false);
+  const [isDeafened, setIsDeafened] = useState(false);
+  const [participants, setParticipants] = useState<VoiceParticipant[]>([
+    {
+      id: '1',
+      username: 'user1',
+      isMuted: false,
+      isDeafened: false,
+      isSpeaking: true
+    },
+    {
+      id: '2',
+      username: 'user2',
+      isMuted: true,
+      isDeafened: false,
+      isSpeaking: false
+    },
+    {
+      id: '3',
+      username: 'user3',
+      isMuted: false,
+      isDeafened: true,
+      isSpeaking: false
     }
+  ]);
+
+  const toggleMute = () => {
+    setIsMuted(!isMuted);
+    // TODO: Update voice state via WebRTC
+  };
+
+  const toggleDeafen = () => {
+    const newDeafened = !isDeafened;
+    setIsDeafened(newDeafened);
+    if (newDeafened) {
+      setIsMuted(true); // Deafening also mutes
+    }
+    // TODO: Update voice state via WebRTC
   };
 
   return (
-    <div className="ml-2">
-      <div
-        onClick={handleClick}
-        className={`flex items-center px-2 py-1 rounded cursor-pointer transition-colors group ${
-          isConnected
-            ? 'bg-green-600 text-white'
-            : 'text-gray-400 hover:bg-gray-700 hover:text-gray-300'
-        }`}
-      >
-        <Volume2 className="w-4 h-4 mr-2" />
-        <span className="flex-1 truncate">{channel.name}</span>
-        
-        {userCount > 0 && (
-          <div className="flex items-center ml-2">
-            <Users className="w-3 h-3 mr-1" />
-            <span className="text-xs">{userCount}</span>
-            {channel.user_limit > 0 && (
-              <span className="text-xs">/{channel.user_limit}</span>
-            )}
+    <div className="bg-gray-700 border-t border-gray-600">
+      {/* Voice Channel Header */}
+      <div className="px-4 py-3 border-b border-gray-600">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+            <span className="text-sm font-medium text-white">
+              Voice Connected
+            </span>
           </div>
-        )}
+          <span className="text-xs text-gray-400">
+            {channelName}
+          </span>
+        </div>
       </div>
 
-      {/* Connected Users */}
-      {isConnected && voiceState.users.length > 0 && (
-        <div className="ml-6 mt-1 space-y-1">
-          {voiceState.users.map((voiceUser) => (
-            <div key={voiceUser.id} className="flex items-center text-sm text-gray-300">
-              <div className="w-6 h-6 bg-indigo-500 rounded-full flex items-center justify-center text-xs font-semibold mr-2">
-                {(voiceUser.user.display_name || voiceUser.user.username).charAt(0).toUpperCase()}
+      {/* Participants */}
+      <div className="px-4 py-2 max-h-32 overflow-y-auto">
+        <div className="space-y-2">
+          {participants.map((participant) => (
+            <div key={participant.id} className="flex items-center space-x-3">
+              <div className="relative">
+                <Avatar
+                  src={participant.avatar}
+                  alt={participant.username}
+                  fallback={participant.username}
+                  size="sm"
+                />
+                {participant.isSpeaking && (
+                  <div className="absolute -inset-0.5 border-2 border-green-500 rounded-full animate-pulse" />
+                )}
               </div>
-              <span className="flex-1 truncate">
-                {voiceUser.user.display_name || voiceUser.user.username}
-              </span>
-              
-              {/* Voice indicators */}
-              <div className="flex items-center space-x-1">
-                {voiceUser.self_muted && (
-                  <div className="w-3 h-3 bg-red-500 rounded-full" title="Muted" />
+              <div className="flex-1 min-w-0">
+                <span className="text-sm text-white truncate block">
+                  {participant.username}
+                </span>
+              </div>
+              <div className="flex space-x-1">
+                {participant.isMuted && (
+                  <MicOff size={12} className="text-red-500" />
                 )}
-                {voiceUser.self_deaf && (
-                  <div className="w-3 h-3 bg-gray-500 rounded-full" title="Deafened" />
-                )}
-                {voiceUser.streaming && (
-                  <Monitor className="w-3 h-3 text-green-400" title="Screen sharing" />
+                {participant.isDeafened && (
+                  <HeadphonesOff size={12} className="text-red-500" />
                 )}
               </div>
             </div>
           ))}
         </div>
-      )}
+      </div>
+
+      {/* Voice Controls */}
+      <div className="px-4 py-3 border-t border-gray-600">
+        <div className="flex items-center justify-between">
+          <div className="flex space-x-2">
+            <Button
+              size="sm"
+              variant={isMuted ? 'danger' : 'secondary'}
+              onClick={toggleMute}
+              title={isMuted ? 'Unmute' : 'Mute'}
+            >
+              {isMuted ? <MicOff size={16} /> : <Mic size={16} />}
+            </Button>
+            <Button
+              size="sm"
+              variant={isDeafened ? 'danger' : 'secondary'}
+              onClick={toggleDeafen}
+              title={isDeafened ? 'Undeafen' : 'Deafen'}
+            >
+              {isDeafened ? <HeadphonesOff size={16} /> : <Headphones size={16} />}
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              title="Voice Settings"
+            >
+              <Settings size={16} />
+            </Button>
+          </div>
+          <Button
+            size="sm"
+            variant="danger"
+            onClick={onLeave}
+            title="Disconnect"
+          >
+            <PhoneOff size={16} />
+          </Button>
+        </div>
+      </div>
     </div>
   );
 };

@@ -7,15 +7,24 @@ export default {
   theme: {
     extend: {
       colors: {
-        realm: {
-          primary: '#5865f2',
-          secondary: '#57f287',
-          accent: '#fee75c',
-          danger: '#ed4245',
-          dark: '#2c2f33',
-          darker: '#23272a',
-          light: '#99aab5'
+        gray: {
+          750: '#3a3d42',
+          850: '#1e2124',
+          900: '#18191c',
+        },
+        discord: {
+          blurple: '#5865f2',
+          green: '#57f287',
+          yellow: '#fee75c',
+          fuchsia: '#eb459e',
+          red: '#ed4245',
         }
+      },
+      fontFamily: {
+        sans: ['"gg sans"', '"Noto Sans"', '"Helvetica Neue"', 'Helvetica', 'Arial', 'sans-serif'],
+      },
+      animation: {
+        'bounce-slow': 'bounce 2s infinite',
       }
     },
   },
