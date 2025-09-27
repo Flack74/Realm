@@ -554,7 +554,7 @@ copies or substantial portions of the Software.
 - **Documentation**: [Wiki](https://github.com/yourusername/realm/wiki)
 - **Issues**: [GitHub Issues](https://github.com/yourusername/realm/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/yourusername/realm/discussions)
-- **Email**: support@realm-app.com
+- **Email**: puspendrachawlax@gmail.com
 
 ---
 
