@@ -562,7 +562,7 @@ copies or substantial portions of the Software.
 
 **⭐ Star this repository if you found it helpful!**
 
-Made with ❤️ by the Realm Team
+Made with ❤️ by Flack
 
 [🌟 Star](https://github.com/yourusername/realm) • [🐛 Report Bug](https://github.com/yourusername/realm/issues) • [✨ Request Feature](https://github.com/yourusername/realm/issues)
 
